@@ -1,0 +1,15 @@
+{
+  "name": "boo_ht",
+  "version": "0.0.1",
+  "description": "Boo Human Trafficking Hackathon",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Daniel Tan, Lin Deming, Leong Shengmin, Alison Yeo, Tan Chengxin",
+  "license": "ISC",
+  "dependencies": {
+    "body-parser": "^1.19.0",
+    "express": "^4.17.1"
+  }
+}
