@@ -28,7 +28,7 @@ const PAGE_ACCESS_TOKEN = 'EAAgBNNw4zGABAFLAIrd9iIkpXAesz1kKdERl94THZCrzYo28cnFG
 var mongoose = require('mongoose');
 
 //Set up default mongoose connection
-var mongoDB = 'mongodb://127.0.0.1/my_database';
+var mongoDB = 'mongodb://booht:password1@ds151917.mlab.com:51917/booht';
 mongoose.connect(mongoDB, { useNewUrlParser: true });
 
 //Get the default connection
@@ -36,6 +36,9 @@ var db = mongoose.connection;
 
 //Bind connection to error event (to get notification of connection errors)
 db.on('error', console.error.bind(console, 'MongoDB connection error:'));
+
+// Message Model
+const Model = require('./models/Message');
 
 // Imports dependencies and set up http server
 const 
@@ -115,13 +118,20 @@ app.get('/webhook', (req, res) => {
   }
 });
 
-function handleMessage(sender_psid, received_message) {
+async function handleMessage(sender_psid, received_message) {
   let response;
   
   // Checks if the message contains text
   if (received_message.text) {    
     // Create the payload for a basic text message, which
     // will be added to the body of our request to the Send API
+    const newMessage = new Message({
+      senderId: sender_psid,
+      messageText: received_message.text,
+      attachmentUrl: ''
+    });
+
+    await newMessage.save();
     response = {
       "text": `You sent the message: "${received_message.text}". Now send me an attachment!`
     }

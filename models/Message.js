@@ -5,9 +5,8 @@ const Schema = mongoose.Schema;
 // Create Schema
 const MessageSchema = new Schema({
     senderId: String,
-    recipientId: String,
-    timestamp: Number,
-    messageText: String
+    messageText: String,
+    attachmentUrl: String
 });
 
 module.exports = Message = mongoose.model('message', MessageSchema);
