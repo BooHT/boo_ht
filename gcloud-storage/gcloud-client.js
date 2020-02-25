@@ -1,4 +1,5 @@
-require('process')
+var process = require('process')
+var request = require('request')
 const gc = require('./gcloud-storage')
 const bucket = gc.bucket(process.env.GCP_BUCKET_NAME) // should be your bucket name
 
@@ -10,25 +11,9 @@ const bucket = gc.bucket(process.env.GCP_BUCKET_NAME) // should be your bucket n
  */
 
 async function upload(filepath) {
-  let splits = filepath.split('/');
-  filename = splits[splits.length - 1];
-  filename = filename.replace(/ /g, "_");
-
-  // get extension 
-  dst = filename.split('.');
   let ts = Date.now()
-  let destPath = `${dst[0]}-${ts}.${dst[1]}`;
-  let opts =  {
-    gzip: true,
-    destination: destPath
-  };
-  bucket.upload(filepath, opts, (err, file) => {
-    if (err) {
-      console.error(err);
-    } else {
-      console.info('Successfully uploaded ' + file + ' to ' + destPath);
-    }
-  })
+  const file = bucket.file(ts); 
+  request(String(filepath)).pipe(file.createWriteStream());
 }
 
 /**

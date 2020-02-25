@@ -39,9 +39,7 @@ db.on('error', console.error.bind(console, 'MongoDB connection error:'));
 
 // Message Model
 const Model = require('./models/Message');
-
-const 
-gcp_storage = require('./gcloud-storage')
+const gcloud_cli = require('./gcloud-storage/gcloud-client');
 
 // Imports dependencies and set up http server
 const 
@@ -120,8 +118,6 @@ app.get('/webhook', (req, res) => {
   }
 });
 
-app = gcp_storage.addRoutes(app);
-
 async function handleMessage(sender_psid, received_message) {
   let response;
   
@@ -142,7 +138,12 @@ async function handleMessage(sender_psid, received_message) {
   } else if (received_message.attachments) {
     // Get the URL of the message attachment
     let attachment_url = received_message.attachments[0].payload.url;
-    gcp_storage.upload(attachment_url);
+
+    console.log("ATTACHMENT URL: " + attachment_url)
+    if (attachment_url) {
+    gcloud_cli.upload(attachment_url);
+
+    }
 
     response = {
       "attachment": {
