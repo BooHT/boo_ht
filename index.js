@@ -151,7 +151,7 @@ function processPayload(sender_psid, payload, text) {
     case GREETINGS:
       if (text == "Yes") {  // move to output 2a
         response = {
-          "text": `What date did you witness the suspicious activity?`
+          "text": `What date (dd/mm/yyyy) did you witness the suspicious activity?`
         }
       } else {
         payload = SESSION_END;
@@ -162,7 +162,7 @@ function processPayload(sender_psid, payload, text) {
       break;
     case TIME:
       response = {
-        "text": `On ${text}, roughly what time did you lose the item?`
+        "text": `On ${text}, roughly what time (HH:MM) did you lose the item?`
       }
       break;
     case MORE_DETAILS:
