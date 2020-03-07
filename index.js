@@ -24,6 +24,7 @@
 // const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
 const PAGE_ACCESS_TOKEN = 'EAAgBNNw4zGABAFLAIrd9iIkpXAesz1kKdERl94THZCrzYo28cnFGgrZB2lZC4tdemKkd7EeNT0QMUCcxtulyOWAKRerXQNSBZCMnnGF2A8sZBGZBXr44Fjjzc2KATRKu5MVeSToe7QrGYDAAtZCjovRYKMN7akwqFMZBA4Qy6hsg0AZDZD';
 
+var userMap = new Map()
 //Import the mongoose module
 var mongoose = require('mongoose');
 
@@ -42,11 +43,15 @@ const Model = require('./models/Message');
 const gcloud_cli = require('./gcloud-storage/gcloud-client');
 
 const
+  FIRST_QN = "FIRST_QN",
   GREETINGS = "GREETINGS",
   TIME = "TIME",
   MORE_DETAILS = "MORE_DETAILS",
   CONTACT = "CONTACT",
-  RESPONSE_RECORDED = "RESPONSE_RECORDED"
+  KEY_IN_DETAILS = "KEY_IN_DETAILS",
+  RESPONSE_RECORDED = "RESPONSE_RECORDED",
+  DEFAULT = "DEFAULT",
+  SESSION_END = "SESSION_END"
 
 
 // Imports dependencies and set up http server
@@ -130,21 +135,28 @@ app.get('/webhook', (req, res) => {
   }
 });
 
-function processPayload(payload, text) {
+function processPayload(sender_psid, payload, text) {
   console.log(`payload: ${payload}`)
+  var isDefault = false;
   let response = {
-    "text": `Hey there, I am ... Are you here to report a potential case of human trafficking?`,
-    "quick_replies": yesNoQuickReply(GREETINGS)
+    "text": "Can't understand what you're saying, please rephrase that."
   };
   switch (payload) {
+    case FIRST_QN:
+      response = {
+        "text": `Hey there, I am ... Are you here to report a potential case of human trafficking?`,
+        "quick_replies": yesNoQuickReply(GREETINGS)
+      }
+      break;
     case GREETINGS:
       if (text == "Yes") {  // move to output 2a
         response = {
           "text": `What date did you witness the suspicious activity?`
         }
       } else {
+        payload = SESSION_END;
         response = {
-          "text": `Sure, let me know if you change your mind?`
+          "text": `Sure, let me know if you change your mind.`
         }
       }
       break;
@@ -160,6 +172,18 @@ function processPayload(payload, text) {
       }
       break;
     case CONTACT:
+      if (text == "Yes") {
+        response = {
+          "text": "Please key in details..."
+        }
+      } else {
+        payload = SESSION_END;
+        response = {
+          "text": `Sure, let me know if you change your mind.`
+        }
+      }
+      break;
+    case KEY_IN_DETAILS:
       response = {
         "text": "May I have your email address and/or contact number?",
         "quick_replies": [
@@ -171,14 +195,21 @@ function processPayload(payload, text) {
           }
         ]
       }
-      break;
     case RESPONSE_RECORDED:
       response = {
         "text": "Thank you so much. Your response has been recorded."
       }
     default:
+      isDefault = true;
+      payload = DEFAULT;
     break;
   }
+  
+  var qns = userMap.get(sender_psid);
+  qns.push(payload);
+  userMap.set(sender_psid, qns);
+
+  console.log(`qns: ${qns}`)
   return response;
 }
 
@@ -216,23 +247,50 @@ function yesNoQuickReply(payload) {
   ]
 }
 
+function reset(sender_psid) {
+  userMap.set(sender_psid, []);
+}
+
 async function handleMessage(sender_psid, received_message) {
   let response;
   
+  const newMessage = new Message({
+    senderId: sender_psid,
+    messageText: received_message.text,
+    attachmentUrl: ''
+  });
+
+  await newMessage.save();
+
   // Checks if the message contains text
   if (received_message.text) {    
-    // Create the payload for a basic text message, which
-    // will be added to the body of our request to the Send API
-    const newMessage = new Message({
-      senderId: sender_psid,
-      messageText: received_message.text,
-      attachmentUrl: ''
-    });
-
-    await newMessage.save();
-
     let payload = null;
     console.log(received_message)
+
+    let userQns = userMap.get(sender_psid);
+    if (userQns == null) {
+      reset(sender_psid)
+      payload = FIRST_QN;
+    } else {
+      var mostRecentQn = userQns[userQns.length - 1];
+      if (mostRecentQn == CONTACT) {
+        payload = KEY_IN_DETAILS;
+      } 
+
+      if (mostRecentQn == SESSION_END || mostRecentQn == RESPONSE_RECORDED) {
+        reset(sender_psid);
+        payload = FIRST_QN;
+      }
+
+      if (mostRecentQn == DEFAULT) {
+        for (let i = userQns.length - 1; i >= 0; i--) {
+          if (userQns[i] != DEFAULT) {
+            payload = userQns[i];
+            break;
+          }
+        }
+      }
+    }
 
     if (isDate(received_message.text)) {
       payload = TIME
@@ -249,8 +307,8 @@ async function handleMessage(sender_psid, received_message) {
         payload = RESPONSE_RECORDED;
       }
     }
-    response = processPayload(payload, received_message.text)
-
+    response = processPayload(sender_psid, payload, received_message.text)
+    console.log(`response: ${response}`)
   } else if (received_message.attachments) {
     
     // if user shares location 
