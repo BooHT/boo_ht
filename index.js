@@ -24,6 +24,7 @@
 // const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
 const PAGE_ACCESS_TOKEN = 'EAAgBNNw4zGABAFLAIrd9iIkpXAesz1kKdERl94THZCrzYo28cnFGgrZB2lZC4tdemKkd7EeNT0QMUCcxtulyOWAKRerXQNSBZCMnnGF2A8sZBGZBXr44Fjjzc2KATRKu5MVeSToe7QrGYDAAtZCjovRYKMN7akwqFMZBA4Qy6hsg0AZDZD';
 
+var userMap = new Map()
 //Import the mongoose module
 var mongoose = require('mongoose');
 
@@ -41,6 +42,18 @@ db.on('error', console.error.bind(console, 'MongoDB connection error:'));
 const Model = require('./models/Message');
 const gcloud_cli = require('./gcloud-storage/gcloud-client');
 
+const
+  FIRST_QN = "FIRST_QN",
+  GREETINGS = "GREETINGS",
+  TIME = "TIME",
+  MORE_DETAILS = "MORE_DETAILS",
+  CONTACT = "CONTACT",
+  KEY_IN_DETAILS = "KEY_IN_DETAILS",
+  RESPONSE_RECORDED = "RESPONSE_RECORDED",
+  DEFAULT = "DEFAULT",
+  SESSION_END = "SESSION_END"
+
+
 // Imports dependencies and set up http server
 const 
   request = require('request'),
@@ -50,6 +63,10 @@ const
 
 // Sets server port and logs message on success
 app.listen(1337, () => console.log('webhook is listening'));
+
+app.get('/', (req, res) => {
+  res.send(200)
+})
 // Accepts POST requests at /webhook endpoint
 app.post('/webhook', (req, res) => {  
 
@@ -63,7 +80,7 @@ app.post('/webhook', (req, res) => {
 
       // Gets the body of the webhook event
       let webhook_event = entry.messaging[0];
-      console.log(webhook_event);
+      console.log(`webhook_event: ${JSON.stringify(webhook_event)}`);
 
 
       // Get the sender PSID
@@ -118,60 +135,238 @@ app.get('/webhook', (req, res) => {
   }
 });
 
+function processPayload(sender_psid, payload, text) {
+  console.log(`payload: ${payload}`)
+  var isDefault = false;
+  let response = {
+    "text": "Can't understand what you're saying, please rephrase that."
+  };
+  switch (payload) {
+    case FIRST_QN:
+      response = {
+        "text": `Hey there, I am ... Are you here to report a potential case of human trafficking?`,
+        "quick_replies": yesNoQuickReply(GREETINGS)
+      }
+      break;
+    case GREETINGS:
+      if (text == "Yes") {  // move to output 2a
+        response = {
+          "text": `What date (dd/mm/yyyy) did you witness the suspicious activity?`
+        }
+      } else {
+        payload = SESSION_END;
+        response = {
+          "text": `Sure, let me know if you change your mind.`
+        }
+      }
+      break;
+    case TIME:
+      response = {
+        "text": `On ${text}, roughly what time (HH:MM) did you witness the suspicious activity?`
+      }
+      break;
+    case MORE_DETAILS:
+      response = {
+        "text": "Sure thing, can you share some details on what you saw?",
+        "quick_replies": yesNoQuickReply(CONTACT)
+      }
+      break;
+    case CONTACT:
+      if (text == "Yes") {
+        response = {
+          "text": "Please key in details..."
+        }
+      } else {
+        payload = SESSION_END;
+        response = {
+          "text": `Sure, let me know if you change your mind.`
+        }
+      }
+      break;
+    case KEY_IN_DETAILS:
+      response = {
+        "text": "May I have your email address and/or contact number?",
+        "quick_replies": [
+          {
+            "content_type": "user_phone_number"
+          }, 
+          {
+            "content_type": "user_email"
+          }
+        ]
+      }
+    case RESPONSE_RECORDED:
+      response = {
+        "text": "Thank you so much. Your response has been recorded."
+      }
+    default:
+      isDefault = true;
+      payload = DEFAULT;
+    break;
+  }
+  
+  var qns = userMap.get(sender_psid);
+  qns.push(payload);
+  userMap.set(sender_psid, qns);
+
+  console.log(`qns: ${qns}`)
+  return response;
+}
+
+function isEmail(emailText) {
+  var emailReg = /^([a-zA-Z0-9_\-\.]+)@([a-zA-Z0-9_\-\.]+)\.([a-zA-Z]{2,5})$/;
+  return emailText.match(emailReg)
+}
+
+function isPhoneNum(phoneText) {
+  return phoneText.match(/\d{8,}/)
+}
+
+function isDate(dateText) {
+  var dateformat = /^(0?[1-9]|[12][0-9]|3[01])[\/\-](0?[1-9]|1[012])[\/\-]\d{4}$/;
+  return dateText.match(dateformat);
+}
+
+function isTime(timeText) {
+  var timeformat = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+  return timeText.match(timeformat);
+}
+
+function yesNoQuickReply(payload) {
+  return [
+    {
+      "content_type": "text", 
+      "title": "Yes",
+      "payload": payload
+    },
+    {
+      "content_type": "text", 
+      "title": "No",
+      "payload": payload
+    }
+  ]
+}
+
+function reset(sender_psid) {
+  userMap.set(sender_psid, []);
+}
+
 async function handleMessage(sender_psid, received_message) {
   let response;
   
+  const newMessage = new Message({
+    senderId: sender_psid,
+    messageText: received_message.text,
+    attachmentUrl: ''
+  });
 
-  console.log("RECIVED MESSAGE");
+  await newMessage.save();
+
   // Checks if the message contains text
   if (received_message.text) {    
-    // Create the payload for a basic text message, which
-    // will be added to the body of our request to the Send API
-    const newMessage = new Message({
-      senderId: sender_psid,
-      messageText: received_message.text,
-      attachmentUrl: ''
-    });
+    let payload = null;
+    console.log(received_message)
 
-    await newMessage.save();
-    response = {
-      "text": `You sent the message: "${received_message.text}". Now send me an attachment!`
-    }
-  } else if (received_message.attachments) {
-    // Get the URL of the message attachment
-    let attachment_url = received_message.attachments[0].payload.url;
+    let userQns = userMap.get(sender_psid);
+    if (userQns == null) {
+      reset(sender_psid)
+      payload = FIRST_QN;
+    } else {
+      var mostRecentQn = userQns[userQns.length - 1];
+      if (mostRecentQn == CONTACT) {
+        payload = KEY_IN_DETAILS;
+      } 
 
-    console.log("ATTACHMENT URL: " + attachment_url)
-    if (attachment_url) {
-    gcloud_cli.upload(attachment_url);
+      if (mostRecentQn == SESSION_END || mostRecentQn == RESPONSE_RECORDED) {
+        reset(sender_psid);
+        payload = FIRST_QN;
+      }
 
-    }
-
-    response = {
-      "attachment": {
-        "type": "template",
-        "payload": {
-          "template_type": "generic",
-          "elements": [{
-            "title": "Is this the right picture?",
-            "subtitle": "Tap a button to answer.",
-            "image_url": attachment_url,
-            "buttons": [
-              {
-                "type": "postback",
-                "title": "Yes!",
-                "payload": "yes",
-              },
-              {
-                "type": "postback",
-                "title": "No!",
-                "payload": "no",
-              }
-            ],
-          }]
+      if (mostRecentQn == DEFAULT) {
+        for (let i = userQns.length - 1; i >= 0; i--) {
+          if (userQns[i] != DEFAULT) {
+            payload = userQns[i];
+            break;
+          }
         }
       }
     }
+
+    if (isDate(received_message.text)) {
+      payload = TIME
+    } 
+
+    if (isTime(received_message.text)) {
+      payload = MORE_DETAILS
+    }
+
+    if (received_message.quick_reply) {
+      payload = received_message.quick_reply.payload;
+
+      if (isEmail(payload) || isPhoneNum(payload)) {
+        payload = RESPONSE_RECORDED;
+      }
+    }
+    response = processPayload(sender_psid, payload, received_message.text)
+    console.log(`response: ${response}`)
+  } else if (received_message.attachments) {
+    
+    // if user shares location 
+    let lat, lng = null;
+    if(received_message.attachments[0].payload.coordinates)
+    {
+        console.log(received_message.attachments[0].payload.coordinates)
+        lat = received_message.attachments[0].payload.coordinates.lat;
+        lng = received_message.attachments[0].payload.coordinates.long;
+
+        const newMessage = new Message({
+          senderId: sender_psid,
+          messageText: 'lat=${lat},lng=${lng}',
+          attachmentUrl: ''
+        })
+        await newMessage.save()
+
+        response = {
+          "text": `You shared your location ${lat}, ${lng}`
+        } 
+    } else {
+
+      // if user shares image / other media types
+      // Get the URL of the message attachment
+      let attachment_url = received_message.attachments[0].payload.url;
+      console.log("ATTACHMENT URL: " + attachment_url)
+
+      if (attachment_url) {
+      gcloud_cli.upload(attachment_url);
+      }
+
+      response = {
+        "attachment": {
+          "type": "template",
+          "payload": {
+            "template_type": "generic",
+            "elements": [{
+              "title": "Is this the right picture?",
+              "subtitle": "Tap a button to answer.",
+              "image_url": attachment_url,
+              "buttons": [
+                {
+                  "type": "postback",
+                  "title": "Yes!",
+                  "payload": "yes",
+                },
+                {
+                  "type": "postback",
+                  "title": "No!",
+                  "payload": "no",
+                }
+              ],
+            }]
+          }
+        }
+      }
+    }
+
   } 
   
   // Send the response message
