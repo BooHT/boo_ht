@@ -41,20 +41,27 @@ db.on('error', console.error.bind(console, 'MongoDB connection error:'));
 const Model = require('./models/Message');
 const gcloud_cli = require('./gcloud-storage/gcloud-client');
 
+const
+  GREETINGS = "GREETINGS",
+  TIME = "TIME",
+  MORE_DETAILS = "MORE_DETAILS",
+  CONTACT = "CONTACT",
+  RESPONSE_RECORDED = "RESPONSE_RECORDED"
+
+
 // Imports dependencies and set up http server
 const 
   request = require('request'),
   express = require('express'),
   body_parser = require('body-parser'),
-  serveStatic = require('serve-static'),
-  path = require('path'),
   app = express().use(body_parser.json()); // creates express http server
-  app.use(serveStatic(path.join(__dirname, 'dist')))
 
 // Sets server port and logs message on success
 app.listen(1337, () => console.log('webhook is listening'));
 
-
+app.get('/', (req, res) => {
+  res.send(200)
+})
 // Accepts POST requests at /webhook endpoint
 app.post('/webhook', (req, res) => {  
 
@@ -68,7 +75,7 @@ app.post('/webhook', (req, res) => {
 
       // Gets the body of the webhook event
       let webhook_event = entry.messaging[0];
-      console.log(webhook_event);
+      console.log(`webhook_event: ${JSON.stringify(webhook_event)}`);
 
 
       // Get the sender PSID
@@ -78,7 +85,6 @@ app.post('/webhook', (req, res) => {
       // Check if the event is a message or postback and
       // pass the event to the appropriate handler function
       if (webhook_event.message) {
-        console.log('from: ' + webhook_event.from);
         handleMessage(sender_psid, webhook_event.message);        
       } else if (webhook_event.postback) {
         
@@ -124,6 +130,92 @@ app.get('/webhook', (req, res) => {
   }
 });
 
+function processPayload(payload, text) {
+  console.log(`payload: ${payload}`)
+  let response = {
+    "text": `Hey there, I am ... Are you here to report a potential case of human trafficking?`,
+    "quick_replies": yesNoQuickReply(GREETINGS)
+  };
+  switch (payload) {
+    case GREETINGS:
+      if (text == "Yes") {  // move to output 2a
+        response = {
+          "text": `What date did you witness the suspicious activity?`
+        }
+      } else {
+        response = {
+          "text": `Sure, let me know if you change your mind?`
+        }
+      }
+      break;
+    case TIME:
+      response = {
+        "text": `On ${text}, roughly what time did you lose the item?`
+      }
+      break;
+    case MORE_DETAILS:
+      response = {
+        "text": "Sure thing, can you share some details on what you saw?",
+        "quick_replies": yesNoQuickReply(CONTACT)
+      }
+      break;
+    case CONTACT:
+      response = {
+        "text": "May I have your email address and/or contact number?",
+        "quick_replies": [
+          {
+            "content_type": "user_phone_number"
+          }, 
+          {
+            "content_type": "user_email"
+          }
+        ]
+      }
+      break;
+    case RESPONSE_RECORDED:
+      response = {
+        "text": "Thank you so much. Your response has been recorded."
+      }
+    default:
+    break;
+  }
+  return response;
+}
+
+function isEmail(emailText) {
+  var emailReg = /^([a-zA-Z0-9_\-\.]+)@([a-zA-Z0-9_\-\.]+)\.([a-zA-Z]{2,5})$/;
+  return emailText.match(emailReg)
+}
+
+function isPhoneNum(phoneText) {
+  return phoneText.match(/\d{8,}/)
+}
+
+function isDate(dateText) {
+  var dateformat = /^(0?[1-9]|[12][0-9]|3[01])[\/\-](0?[1-9]|1[012])[\/\-]\d{4}$/;
+  return dateText.match(dateformat);
+}
+
+function isTime(timeText) {
+  var timeformat = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+  return timeText.match(timeformat);
+}
+
+function yesNoQuickReply(payload) {
+  return [
+    {
+      "content_type": "text", 
+      "title": "Yes",
+      "payload": payload
+    },
+    {
+      "content_type": "text", 
+      "title": "No",
+      "payload": payload
+    }
+  ]
+}
+
 async function handleMessage(sender_psid, received_message) {
   let response;
   
@@ -138,9 +230,27 @@ async function handleMessage(sender_psid, received_message) {
     });
 
     await newMessage.save();
-    response = {
-      "text": `You sent the message: "${received_message.text}". Now send me an attachment!`
+
+    let payload = null;
+    console.log(received_message)
+
+    if (isDate(received_message.text)) {
+      payload = TIME
+    } 
+
+    if (isTime(received_message.text)) {
+      payload = MORE_DETAILS
     }
+
+    if (received_message.quick_reply) {
+      payload = received_message.quick_reply.payload;
+
+      if (isEmail(payload) || isPhoneNum(payload)) {
+        payload = RESPONSE_RECORDED;
+      }
+    }
+    response = processPayload(payload, received_message.text)
+
   } else if (received_message.attachments) {
     
     // if user shares location 
