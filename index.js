@@ -46,10 +46,15 @@ const
   request = require('request'),
   express = require('express'),
   body_parser = require('body-parser'),
+  serveStatic = require('serve-static'),
+  path = require('path'),
   app = express().use(body_parser.json()); // creates express http server
+  app.use(serveStatic(path.join(__dirname, 'dist')))
 
 // Sets server port and logs message on success
 app.listen(1337, () => console.log('webhook is listening'));
+
+
 // Accepts POST requests at /webhook endpoint
 app.post('/webhook', (req, res) => {  
 
@@ -73,6 +78,7 @@ app.post('/webhook', (req, res) => {
       // Check if the event is a message or postback and
       // pass the event to the appropriate handler function
       if (webhook_event.message) {
+        console.log('from: ' + webhook_event.from);
         handleMessage(sender_psid, webhook_event.message);        
       } else if (webhook_event.postback) {
         
