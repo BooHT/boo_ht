@@ -162,7 +162,7 @@ function processPayload(sender_psid, payload, text) {
       break;
     case TIME:
       response = {
-        "text": `On ${text}, roughly what time (HH:MM) did you lose the item?`
+        "text": `On ${text}, roughly what time (HH:MM) did you witness the suspicious activity?`
       }
       break;
     case MORE_DETAILS:
