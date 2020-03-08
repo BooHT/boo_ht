@@ -144,7 +144,7 @@ function processPayload(sender_psid, payload, text) {
   switch (payload) {
     case FIRST_QN:
       response = {
-        "text": `Hey there, I am Boo.ht bot, are you here to report a potential case of human trafficking?`,
+        "text": `Hey there, I am BOO.ht bot, are you here to report a potential case of human trafficking?`,
         "quick_replies": yesNoQuickReply(GREETINGS)
       }
       break;
